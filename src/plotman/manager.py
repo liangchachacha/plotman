@@ -18,10 +18,11 @@ from plotman import \
 from plotman import job, plot_util
 
 # Constants
-MIN = 60    # Seconds
-HR = 3600   # Seconds
+MIN = 60  # Seconds
+HR = 3600  # Seconds
 
-MAX_AGE = 1000_000_000   # Arbitrary large number of seconds
+MAX_AGE = 1000_000_000  # Arbitrary large number of seconds
+
 
 def dstdirs_to_furthest_phase(all_jobs):
     '''Return a map from dst dir to a phase tuple for the most progressed job
@@ -31,6 +32,7 @@ def dstdirs_to_furthest_phase(all_jobs):
         if not j.dstdir in result.keys() or result[j.dstdir] < j.progress():
             result[j.dstdir] = j.progress()
     return result
+
 
 def dstdirs_to_youngest_phase(all_jobs):
     '''Return a map from dst dir to a phase tuple for the least progressed job
@@ -42,6 +44,7 @@ def dstdirs_to_youngest_phase(all_jobs):
         if not j.dstdir in result.keys() or result[j.dstdir] > j.progress():
             result[j.dstdir] = j.progress()
     return result
+
 
 def phases_permit_new_job(phases, d, sched_cfg, dir_cfg):
     '''Scheduling logic: return True if it's OK to start a new job on a tmp dir
@@ -71,6 +74,7 @@ def phases_permit_new_job(phases, d, sched_cfg, dir_cfg):
         return False
 
     return True
+
 
 def maybe_start_new_plot(dir_cfg, sched_cfg, plotting_cfg):
     jobs = job.Job.get_running_jobs(dir_cfg.log)
@@ -111,6 +115,7 @@ def maybe_start_new_plot(dir_cfg, sched_cfg, plotting_cfg):
             )
 
             plot_args = ['chia', 'plots', 'create',
+#                    '--override-k',
                     '-k', str(plotting_cfg.k),
                     '-r', str(plotting_cfg.n_threads),
                     '-u', str(plotting_cfg.n_buckets),
@@ -157,7 +162,6 @@ def maybe_start_new_plot(dir_cfg, sched_cfg, plotting_cfg):
             # blank...  As is, this provides a good chance that our handle
             # of the log file will get closed explicitly while still
             # allowing handling of just the log file opening error.
-
             with open_log_file:
                 # start_new_sessions to make the job independent of this controlling tty.
                 p = subprocess.Popen(plot_args,
@@ -166,9 +170,44 @@ def maybe_start_new_plot(dir_cfg, sched_cfg, plotting_cfg):
                     start_new_session=True)
 
             psutil.Process(p.pid).nice(15)
+            
+            cpu_count = psutil.cpu_count()
+            threads = plotting_cfg.n_threads
+            # 尝试绑定CPU，当线程数为2或4，且最大任务数不大于核数（1/threads）时
+            if (2 == threads or 4 == threads) and  cpu_count / threads >= sched_cfg.global_max_jobs:
+                # 计算CPU mask
+                cpu_mask = []
+                cpu_used = []
+                cpu_unused = []
+                while cpu_count > 0:
+                    cpu_mask.append(len(cpu_mask))
+                    cpu_used.append(-1)
+                    cpu_count -= 1
+                cpu_unused = cpu_mask[:]
+                 
+                # 统计已绑定的CPU
+                for j in jobs:
+                    if len(j.cpu_affinity) != len(cpu_mask):
+                        for c in j.cpu_affinity:
+                            cpu_used[c] = c
+                            cpu_unused[c] = -1
+                    
+                logmsg = logmsg + ("\r\n  {cpus:%d" % len(cpu_mask)) + ', unused:[' + ','.join('%s' % item for item in cpu_unused)
+                # 尝试绑定到剩余CPU（两个核）
+                i = 0
+                while i < len(cpu_unused):
+                    if cpu_unused[i] >= 0:
+                        # 这两个核能用，绑定
+                        cpu_used = cpu_unused[i:i + threads]
+                        os.sched_setaffinity(p.pid, cpu_used)
+                        logmsg = logmsg + ("], pid: %d, affinity:[" % (p.pid)) + ','.join('%s' % item for item in cpu_used)
+                        break
+                    i += threads
+                    
+                logmsg = logmsg + ']}' 
             return (True, logmsg)
-
     return (False, wait_reason)
+
 
 def select_jobs_by_partial_id(jobs, partial_id):
     selected = []

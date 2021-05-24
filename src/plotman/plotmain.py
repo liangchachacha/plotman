@@ -1,13 +1,13 @@
 import argparse
 import importlib
-import importlib.resources
+#import importlib.resources
 import os
 import random
 from shutil import copyfile
 import time
 
 # Plotman libraries
-from plotman import analyzer, archive, configuration, interactive, manager, plot_util, reporting
+from plotman import analyzer, archive, configuration, interactive, manager, reporting
 from plotman import resources as plotman_resources
 from plotman.job import Job
 
@@ -146,7 +146,11 @@ def main():
 
             # TODO: report this via a channel that can be polled on demand, so we don't spam the console
             if wait_reason:
-                print('...sleeping %d s: %s' % (cfg.scheduling.polling_time_s, wait_reason))
+                if wait_reason[0]:
+                    print(wait_reason[1])
+                    print('...sleeping %d'  % (cfg.scheduling.polling_time_s))
+                else:
+                    print('...sleeping %d s: %s' % (cfg.scheduling.polling_time_s, wait_reason))    
 
             time.sleep(cfg.scheduling.polling_time_s)
 

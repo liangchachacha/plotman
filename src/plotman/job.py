@@ -129,8 +129,9 @@ class Job:
     job_id = 0
     plot_id = '--------'
     proc = None   # will get a psutil.Process
+    cpu_affinity = 0
 
-    def get_running_jobs(logroot, cached_jobs=()):
+    def get_running_jobs( logroot, cached_jobs=()):
         '''Return a list of running plot jobs.  If a cache of preexisting jobs is provided,
            reuse those previous jobs without updating their information.  Always look for
            new jobs not already in the cache.'''
@@ -159,6 +160,7 @@ class Job:
                             if job.help:
                                 continue
                             jobs.append(job)
+                            job.cpu_affinity=os.sched_getaffinity(proc.pid);
 
         return jobs
 
